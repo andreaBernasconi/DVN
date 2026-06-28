@@ -1,3 +1,9 @@
+/*
+Title: DVN Opta
+Board: Opta
+*/
+
+
 #include <Ethernet.h>
 #include <PortentaEthernet.h>
 #include <SPI.h>
@@ -10,7 +16,6 @@
 #define UDP_TX_PACKET_MAX_SIZE 1024
 #define GET_OPTA_OTP_BOARD_INFO
 
-const char* Version = "0.0.1";
 
 OptaBoardInfo* info;
 OptaBoardInfo* boardInfo();
@@ -18,136 +23,138 @@ OptaBoardInfo* boardInfo();
 EthernetUDP Udp;
 unsigned int localPort = 8888;
 
-IPAddress pcIP(192, 168, 100, 53);  //PcIp 900 -03
-const unsigned int pcPort = 8888;   // PcPort
+IPAddress pcIP(192, 168, 100, 51);   // PC IP address
+const unsigned int pcPort = 8888;    // PC UDP port
 
 char packetBuffer[UDP_TX_PACKET_MAX_SIZE];
 
-byte systemStatus = 0;  // 0  off, 1 On, 2 standBy, 3 Set da fare
+byte systemStatus = 0;  // 0 off, 1 on, 2 standby, 3 reserved
 
 OSCBundle bndl;
 
-
-//wol
+// Wake-on-LAN
 const byte first_six_bytes[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 EthernetUDP udp_client;
-const byte broadcast_ip[] = { 255, 255, 255, 255 };                // Broadcast IP address
-const byte target_mac[] = { 0x00, 0x23, 0x24, 0xBC, 0x9E, 0x51 };  // PC's MAC address
+const byte broadcast_ip[] = { 255, 255, 255, 255 };
+const byte target_mac[] = { 0x00, 0x23, 0x24, 0xBC, 0x9E, 0x51 };
 
-//debounce
-unsigned long debounceDelay = 300;
-unsigned long checkDelay = 1000;
+// debounce
+const unsigned long debounceDelay = 300;
 
-//input name
-int onOffBtn = A0; //T1
-int moveSns = A1; //T2
-int startBtn = A2; //T3
+// pins using debounce (buttons only)
+const int debouncePins[] = { A0, A1, A2 };
+const int NUM_DEBOUNCE_PINS = sizeof(debouncePins) / sizeof(debouncePins[0]);
 
-//Relay
+int debounceIndex(int pin) {
+  for (int i = 0; i < NUM_DEBOUNCE_PINS; i++) {
+    if (debouncePins[i] == pin) return i;
+  }
+  return -1;
+}
+
+bool debounce(int pin) {
+  static unsigned long lastTime[10] = {0};
+  static int lastState[10] = {0};
+
+  int idx = debounceIndex(pin);
+  if (idx < 0) return false;
+
+  int state = digitalRead(pin);
+
+  if (state != lastState[idx]) {
+    if (state == HIGH && (millis() - lastTime[idx]) > debounceDelay) {
+      lastTime[idx] = millis();
+      lastState[idx] = state;
+      return true;
+    }
+    lastState[idx] = state;
+  }
+  return false;
+}
+
+// input pins
+int onOffBtn = A0;   // power button
+int startBtnIta = A1;    // Italian Button
+int startBtnEng = A2;   // English Button
+
+// relay outputs
 int onOffRel = D0;
 int ampRel = D1;
 
-// optaLed
-int grnLed = LED_RESET;  //green
-int redLed = LEDR;       //red
+// Opta LEDs
+int grnLed = LED_RESET;
+int redLed = LEDR;
 int onOffRelLed = LED_D0;
 int ampRelLed = LED_D1;
 
-
-
 void setup() {
 
-  //Serial.begin(115200);
+  pinMode(onOffBtn, INPUT_PULLDOWN);
+  pinMode(startBtnIta, INPUT_PULLDOWN);
+  pinMode(startBtnEng, INPUT_PULLDOWN);
 
+  pinMode(onOffRel, OUTPUT);
+  pinMode(ampRel, OUTPUT);
 
-  pinMode(onOffBtn, INPUT_PULLDOWN);  // button OnOff
-  pinMode(moveSns, INPUT_PULLDOWN);   // contatto sensore
-  pinMode(startBtn, INPUT_PULLDOWN);  // start button
+  pinMode(onOffRelLed, OUTPUT);
+  pinMode(ampRelLed, OUTPUT);
 
-  pinMode(onOffRel, OUTPUT);  //onOff Relay
-  pinMode(ampRel, OUTPUT);    //amp Relay
+  pinMode(grnLed, OUTPUT);
+  pinMode(redLed, OUTPUT);
+  pinMode(BTN_USER, INPUT);
 
+  // Ethernet configuration
+  IPAddress ip(192, 168, 100, 61);
+  IPAddress myDns(192, 168, 100, 254);
+  IPAddress gateway(192, 168, 100, 254);
+  IPAddress subnet(255, 255, 255, 0);
 
-
-  pinMode(onOffRelLed, OUTPUT);  // onOffRel Led
-  pinMode(ampRelLed, OUTPUT);    // ampRel Led
-
-
-  pinMode(grnLed, OUTPUT);   // reset led opta
-  pinMode(redLed, OUTPUT);   // red led opta
-  pinMode(BTN_USER, INPUT);  // spare
-
-
-
-
-  //OPTA IP CONFIG
-  IPAddress ip(192, 168, 100, 61);        //static address
-  IPAddress myDns(192, 168, 100, 254);    // same as gateway
-  IPAddress gateway(192, 168, 100, 254);  // gateway
-  IPAddress subnet(255, 255, 255, 0);     // subnet
   Ethernet.begin(boardInfo()->mac_address, ip, myDns, gateway, subnet);
   Udp.begin(localPort);
 }
 
 void loop() {
   onOffBtnHandler();
-  startBtnHandler();
-  moveSnsHandler();
+  startBtnItaHandler();
+  startBtnEngHandler();
   packedInHandler();
 }
 
-
-// function
+// -----------------------------------------------------------------------------
+// BUTTON HANDLERS
+// -----------------------------------------------------------------------------
 
 void onOffBtnHandler() {
   if (systemStatus != 2) {
-    static unsigned long timeAtPress = 0;
-    if (digitalRead(onOffBtn)) {
-      if ((millis() - timeAtPress) > debounceDelay) {
-        switch (systemStatus) {
-          case 0:
-            switchOn();
-            break;
-          case 1:
-            switchOff();
-            break;
-        }
-      }
-      timeAtPress = millis();
+    if (debounce(onOffBtn)) {
+      if (systemStatus == 0) switchOn();
+      else if (systemStatus == 1) switchOff();
     }
   }
 }
 
-void startBtnHandler() {
+void startBtnItaHandler() {
   if (systemStatus == 1) {
-    static unsigned long timeAtPress = 0;
-    if (digitalRead(startBtn)) {
-      if ((millis() - timeAtPress) > debounceDelay) {
-        bndl.add("/startBtn").add((int)1);
-        bundle_send(&bndl);
-      }
-      timeAtPress = millis();
+    if (debounce(startBtnIta)) {
+      bndl.add("/startBtnIta").add(1);
+      bundle_send(&bndl);
     }
   }
 }
 
-void moveSnsHandler() {
+void startBtnEngHandler() {
   if (systemStatus == 1) {
-    static int switchState = 2;
-    if (digitalRead(moveSns) == 1 && switchState != 1) {
-      bndl.add("/moveSns").add(1);
+    if (debounce(startBtnEng)) {
+      bndl.add("/startBtnEng").add(1);
       bundle_send(&bndl);
-      switchState = 1;
-    } else if (digitalRead(moveSns) == 0 && switchState != 0) {
-      bndl.add("/moveSns").add(0);
-      bundle_send(&bndl);
-      switchState = 0;
     }
   }
+
 }
 
-
-
+// -----------------------------------------------------------------------------
+// SWITCH CONTROL
+// -----------------------------------------------------------------------------
 
 void switchOn() {
   systemStatus = 2;
@@ -157,7 +164,6 @@ void switchOn() {
   delay(5500);
   send_wol_packet();
 }
-
 
 void switchOff() {
   systemStatus = 2;
@@ -169,29 +175,49 @@ void switchOff() {
   bundle_send(&bndl);
 }
 
+// -----------------------------------------------------------------------------
+// OSC SEND
+// -----------------------------------------------------------------------------
+
 void bundle_send(OSCBundle* bndl) {
-  Udp.beginPacket(pcIP, pcPort);  //remotePort);
+  Udp.beginPacket(pcIP, pcPort);
   bndl->send(Udp);
   Udp.endPacket();
   bndl->empty();
 }
 
+// -----------------------------------------------------------------------------
+// WAKE-ON-LAN
+// -----------------------------------------------------------------------------
 
-// WOL
 void send_wol_packet() {
-  udp_client.begin(7);
-  udp_client.beginPacket(broadcast_ip, 7);
-  udp_client.write(first_six_bytes, sizeof first_six_bytes);
-  for (int i = 0; i < 16; i++) {
-    udp_client.write(target_mac, sizeof target_mac);
+  const int wolRetries = 3;          // number of WOL packets
+  const int wolDelay = 200;          // delay between packets (ms)
+
+  for (int r = 0; r < wolRetries; r++) {
+    udp_client.begin(7);
+    udp_client.beginPacket(broadcast_ip, 7);
+
+    // magic header
+    udp_client.write(first_six_bytes, sizeof first_six_bytes);
+
+    // repeat MAC 16 times
+    for (int i = 0; i < 16; i++) {
+      udp_client.write(target_mac, sizeof target_mac);
+    }
+
+    udp_client.endPacket();
+    udp_client.stop();
+
+    delay(wolDelay);  // spacing between packets
   }
-  udp_client.endPacket();
-  udp_client.stop();
-  Serial.println("send WOL");
 }
 
 
-// packetInHandler
+// -----------------------------------------------------------------------------
+// OSC RECEIVE
+// -----------------------------------------------------------------------------
+
 void packedInHandler() {
   int packetSize = Udp.parsePacket();
   if (packetSize) {
@@ -200,22 +226,20 @@ void packedInHandler() {
     for (int i = 0; i < packetSize; i++) {
       bundleIn.fill(packetBuffer[i]);
     }
-    int bundleInSize = bundleIn.size();
     if (!bundleIn.hasError()) {
       bundleIn.route("/maxSystemState", maxSystemState);
-      bundleIn.route("/version", versionHandler);
+      bundleIn.route("/alive", aliveHandler);
     }
     bundleIn.empty();
   }
 }
 
-
 void maxSystemState(OSCMessage& msg, int addrOffset) {
-  int maxSystemState;
-  maxSystemState = msg.getInt(0);
+  int maxSystemState = msg.getInt(0);
+
   switch (maxSystemState) {
-    case 0:
-      // max si chiude e con esso il sistema operativo
+
+    case 0:   // Max is shutting down
       digitalWrite(redLed, LOW);
       delay(10000);
       digitalWrite(onOffRelLed, LOW);
@@ -223,8 +247,8 @@ void maxSystemState(OSCMessage& msg, int addrOffset) {
       systemStatus = 0;
       digitalWrite(onOffRel, LOW);
       break;
-    case 1:
-      // max acceso, chiudo contatti  ampificatore e setto system status 1
+
+    case 1:   // Max is running
       digitalWrite(ampRel, HIGH);
       digitalWrite(ampRelLed, HIGH);
       delay(1000);
@@ -235,10 +259,9 @@ void maxSystemState(OSCMessage& msg, int addrOffset) {
   }
 }
 
-
-void versionHandler(OSCMessage& msg, int addrOffset) {
-  int id = -1;
-  if (msg.size() == 1) id = msg.getInt(0);
-  bndl.add("/version/61").add(Version).add(id);
+void aliveHandler(OSCMessage& msg, int addrOffset) {
+  int aliveNumber = -1;
+  if (msg.size() == 1) aliveNumber = msg.getInt(0);
+  bndl.add("/alive_ack").add("opta").add(aliveNumber);
   bundle_send(&bndl);
 }

@@ -44,7 +44,7 @@ const int LOCAL_OSC_PORT = 8888;
 #define ETH_CLKMODE ETH_CLOCK_GPIO17_OUT
 
 // PC
-IPAddress PcIP(192, 168, 100, 53);
+IPAddress PcIP(192, 168, 100, 51);
 int PcPort = 8888;
 
 bool onlineStatus[MAX_ROUTES] = { false };
