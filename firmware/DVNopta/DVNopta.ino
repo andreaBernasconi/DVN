@@ -23,8 +23,8 @@ OptaBoardInfo* boardInfo();
 EthernetUDP Udp;
 unsigned int localPort = 8888;
 
-IPAddress pcIP(192, 168, 100, 53);   // PC IP address
-const unsigned int pcPort = 8888;    // PC UDP port
+IPAddress pcIP(192, 168, 100, 53);  // PC IP address
+const unsigned int pcPort = 8888;   // PC UDP port
 
 char packetBuffer[UDP_TX_PACKET_MAX_SIZE];
 
@@ -53,8 +53,8 @@ int debounceIndex(int pin) {
 }
 
 bool debounce(int pin) {
-  static unsigned long lastTime[10] = {0};
-  static int lastState[10] = {0};
+  static unsigned long lastTime[10] = { 0 };
+  static int lastState[10] = { 0 };
 
   int idx = debounceIndex(pin);
   if (idx < 0) return false;
@@ -73,9 +73,9 @@ bool debounce(int pin) {
 }
 
 // input pins
-int onOffBtn = A0;   // power button
-int startBtnIta = A1;    // Italian Button
-int startBtnEng = A2;   // English Button
+int onOffBtn = A0;     // power button
+int startBtnIta = A1;  // Italian Button
+int startBtnEng = A2;  // English Button
 
 // relay outputs
 int onOffRel = D0;
@@ -149,7 +149,6 @@ void startBtnEngHandler() {
       bundle_send(&bndl);
     }
   }
-
 }
 
 // -----------------------------------------------------------------------------
@@ -191,8 +190,8 @@ void bundle_send(OSCBundle* bndl) {
 // -----------------------------------------------------------------------------
 
 void send_wol_packet() {
-  const int wolRetries = 3;          // number of WOL packets
-  const int wolDelay = 200;          // delay between packets (ms)
+  const int wolRetries = 3;  // number of WOL packets
+  const int wolDelay = 200;  // delay between packets (ms)
 
   for (int r = 0; r < wolRetries; r++) {
     udp_client.begin(7);
@@ -234,21 +233,27 @@ void packedInHandler() {
   }
 }
 
+
+
+
+
 void maxSystemState(OSCMessage& msg, int addrOffset) {
   int maxSystemState = msg.getInt(0);
 
   switch (maxSystemState) {
 
-    case 0:   // Max is shutting down
+    case 0:
+      // Max is shutting down
       digitalWrite(redLed, LOW);
-      delay(10000);
-      digitalWrite(onOffRelLed, LOW);
-      delay(10000);
+      delay(25000);
       systemStatus = 0;
+      digitalWrite(onOffRelLed, LOW);
       digitalWrite(onOffRel, LOW);
       break;
 
-    case 1:   // Max is running
+
+
+    case 1:  // Max is running
       digitalWrite(ampRel, HIGH);
       digitalWrite(ampRelLed, HIGH);
       delay(1000);
