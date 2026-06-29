@@ -265,6 +265,10 @@ void maxSystemState(OSCMessage& msg, int addrOffset) {
 }
 
 void aliveHandler(OSCMessage& msg, int addrOffset) {
+  if (systemStatus == 0) {   
+    return;
+  }
+
   int aliveNumber = -1;
   if (msg.size() == 1) aliveNumber = msg.getInt(0);
   bndl.add("/alive_ack").add("opta").add(aliveNumber);
