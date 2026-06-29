@@ -23,7 +23,7 @@ OptaBoardInfo* boardInfo();
 EthernetUDP Udp;
 unsigned int localPort = 8888;
 
-IPAddress pcIP(192, 168, 100, 51);   // PC IP address
+IPAddress pcIP(192, 168, 100, 53);   // PC IP address
 const unsigned int pcPort = 8888;    // PC UDP port
 
 char packetBuffer[UDP_TX_PACKET_MAX_SIZE];
